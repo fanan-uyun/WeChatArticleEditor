@@ -1,0 +1,14 @@
+{
+  "name": "公众号美化器",
+  "short_name": "公众号美化器",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#4F46E5",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}
