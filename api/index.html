@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 解决微信图片防盗链问题 -->
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信文章转 Markdown</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js 用于预览 Markdown -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <!-- Google Fonts 优化阅读体验 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans SC', sans-serif; }
+        /* Markdown 预览的基本样式调整 */
+        .prose img { border-radius: 0.5rem; margin: 1rem 0; max-width: 100%; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .prose h1 { font-size: 1.875rem; font-weight: 700; margin-bottom: 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+        .prose h2 { font-size: 1.5rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.75rem; border-left: 4px solid #10b981; padding-left: 0.75rem; }
+        .prose p { margin-bottom: 1rem; line-height: 1.75; color: #374151; }
+        .prose blockquote { border-left: 4px solid #d1d5db; padding-left: 1rem; color: #6b7280; font-style: italic; background: #f9fafb; padding: 0.5rem 1rem; border-radius: 0.25rem; }
+        .prose a { color: #059669; text-decoration: underline; }
+        .prose code { background-color: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.875em; color: #db2777; }
+        
+        /* 加载动画 */
+        .spinner {
+            border: 3px solid rgba(16, 185, 129, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #10b981;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 自定义滚动条样式，更美观 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+        /* 下拉菜单动画 */
+        .group:hover .group-hover\:block { display: block; animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800">
+
+    <div class="container mx-auto px-4 py-12 max-w-6xl">
+        
+        <!-- 头部 -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-900 mb-3 tracking-tight">微信文章提取工具</h1>
+            <p class="text-gray-500 text-lg">基于 AI 解析，一键将公众号文章转换为高质量 Markdown</p>
+        </div>
+
+        <!-- 输入框区域 -->
+        <div class="bg-white rounded-2xl shadow-lg p-6 mb-10 border border-gray-100 max-w-3xl mx-auto transform transition hover:shadow-xl">
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="relative flex-1">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </div>
+                    <input type="url" id="urlInput" 
+                        class="w-full pl-10 pr-4 py-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition text-gray-700 bg-gray-50 focus:bg-white placeholder-gray-400"
+                        placeholder="请粘贴微信公众号文章链接 (https://mp.weixin.qq.com/...)"
+                        onkeydown="if(event.keyCode==13) convert()">
+                </div>
+                <button onclick="convert()" id="convertBtn"
+                    class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-medium px-8 py-3.5 rounded-xl transition shadow-md hover:shadow-lg flex items-center justify-center min-w-[120px]">
+                    <span id="btnText">开始转换</span>
+                </button>
+            </div>
+            <!-- 错误提示 -->
+            <div id="errorMsg" class="hidden mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span id="errorText"></span>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div id="loading" class="hidden flex flex-col items-center justify-center py-20">
+            <div class="spinner mb-4"></div>
+            <p class="text-gray-500 font-medium">正在解析文章内容，请稍候...</p>
+        </div>
+
+        <!-- 结果展示区域 -->
+        <div id="resultArea" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8 h-[700px]">
+            
+            <!-- 左侧：Markdown 源码 -->
+            <div class="flex flex-col bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden h-full">
+                <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex justify-between items-center z-10 relative">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                        <span class="font-semibold text-gray-700">Markdown</span>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <!-- 同步发布下拉菜单 -->
+                        <div class="relative group">
+                            <button class="text-sm bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm font-medium">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m-4-4v12"></path></svg>
+                                同步发布
+                                <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <!-- 下拉菜单 -->
+                            <div class="hidden group-hover:block absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden z-20">
+                                <a onclick="syncTo('zhihu')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> 知乎专栏
+                                </a>
+                                <a onclick="syncTo('juejin')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-blue-400"></span> 掘金社区
+                                </a>
+                                <a onclick="syncTo('csdn')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-orange-500"></span> CSDN
+                                </a>
+                                <a onclick="syncTo('toutiao')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-red-500"></span> 今日头条
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="h-4 w-px bg-gray-300 mx-1"></div>
+
+                        <button onclick="copyToClipboard()" class="text-sm bg-white border border-gray-300 hover:bg-gray-50 hover:text-green-600 text-gray-600 px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            复制
+                        </button>
+                        <button onclick="downloadMd()" class="text-sm bg-gray-800 hover:bg-gray-900 text-white px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            下载
+                        </button>
+                    </div>
+                </div>
+                <textarea id="mdOutput" class="flex-1 w-full p-5 font-mono text-sm resize-none focus:outline-none bg-[#f8f9fa] text-gray-700 leading-relaxed" readonly></textarea>
+            </div>
+
+            <!-- 右侧：预览 -->
+            <div class="flex flex-col bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden h-full">
+                <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        <span class="font-semibold text-gray-700">实时预览</span>
+                    </div>
+                    <!-- 同步滚动开关 -->
+                    <label class="flex items-center cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition select-none group" title="开启后，滚动一侧会自动同步滚动另一侧">
+                        <input type="checkbox" id="syncScroll" class="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500 accent-green-600" checked>
+                        <span class="ml-2 text-sm text-gray-600 font-medium group-hover:text-green-700">同步滚动</span>
+                    </label>
+                </div>
+                <div id="previewOutput" class="prose max-w-none flex-1 w-full p-6 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTitle = "article";
+
+        async function convert() {
+            const url = document.getElementById('urlInput').value.trim();
+            const errorMsg = document.getElementById('errorMsg');
+            const errorText = document.getElementById('errorText');
+            const loading = document.getElementById('loading');
+            const resultArea = document.getElementById('resultArea');
+            const convertBtn = document.getElementById('convertBtn');
+            const btnText = document.getElementById('btnText');
+
+            if (!url) {
+                showError('请先输入微信文章链接');
+                return;
+            }
+
+            // 重置 UI
+            errorMsg.classList.add('hidden');
+            resultArea.classList.add('hidden');
+            loading.classList.remove('hidden');
+            convertBtn.disabled = true;
+            convertBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            btnText.textContent = "处理中...";
+
+            try {
+                const response = await fetch('/api/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || '转换请求失败');
+                }
+
+                const data = await response.json();
+                
+                // 成功处理
+                document.getElementById('mdOutput').value = data.markdown;
+                
+                // 渲染预览
+                if (typeof marked !== 'undefined') {
+                    document.getElementById('previewOutput').innerHTML = marked.parse(data.markdown);
+                }
+                
+                currentTitle = data.title || "article";
+                
+                loading.classList.add('hidden');
+                resultArea.classList.remove('hidden');
+            } catch (err) {
+                loading.classList.add('hidden');
+                showError(err.message);
+            } finally {
+                convertBtn.disabled = false;
+                convertBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+                btnText.textContent = "开始转换";
+            }
+        }
+
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            const errorText = document.getElementById('errorText');
+            errorText.textContent = msg;
+            errorMsg.classList.remove('hidden');
+        }
+
+        function copyToClipboard() {
+            return new Promise((resolve, reject) => {
+                const copyText = document.getElementById("mdOutput");
+                copyText.select();
+                copyText.setSelectionRange(0, 99999);
+                
+                if (navigator.clipboard && window.isSecureContext) {
+                     navigator.clipboard.writeText(copyText.value).then(() => {
+                        showToast("✅ 已复制到剪贴板");
+                        resolve();
+                    }).catch(err => {
+                        console.error('Clipboard failed:', err);
+                        document.execCommand('copy');
+                        showToast("✅ 已复制到剪贴板");
+                        resolve();
+                    });
+                } else {
+                    document.execCommand('copy');
+                    showToast("✅ 已复制到剪贴板");
+                    resolve();
+                }
+            });
+        }
+
+        function downloadMd() {
+            const text = document.getElementById("mdOutput").value;
+            const blob = new Blob([text], { type: "text/markdown" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${currentTitle}.md`;
+            link.click();
+        }
+
+        // --- 同步功能 ---
+        function syncTo(platform) {
+            const links = {
+                'zhihu': 'https://zhuanlan.zhihu.com/write',
+                'juejin': 'https://juejin.cn/editor/drafts/new',
+                'csdn': 'https://mp.csdn.net/mp_blog/creation/editor',
+                'toutiao': 'https://mp.toutiao.com/profile_v4/graphic/publish'
+            };
+
+            const link = links[platform];
+            if (!link) return;
+
+            // 先复制，成功后再打开新窗口
+            copyToClipboard().then(() => {
+                showToast(`🚀 已复制！正在跳转到${getPlatformName(platform)}...`);
+                setTimeout(() => {
+                    window.open(link, '_blank');
+                }, 800);
+            });
+        }
+
+        function getPlatformName(key) {
+            const map = {
+                'zhihu': '知乎',
+                'juejin': '掘金',
+                'csdn': 'CSDN',
+                'toutiao': '头条号'
+            };
+            return map[key] || '平台';
+        }
+
+        // 简单的 Toast 提示
+        function showToast(message) {
+            // 移除旧的 toast 防止堆叠
+            const oldToast = document.querySelector('.custom-toast');
+            if (oldToast) oldToast.remove();
+
+            const toast = document.createElement('div');
+            toast.className = 'custom-toast fixed bottom-5 right-5 bg-gray-800 text-white px-5 py-3 rounded-lg shadow-xl transition-all duration-300 z-50 flex items-center transform translate-y-10 opacity-0';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // 动画进入
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-10', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-10');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+        }
+
+        // --- 同步滚动逻辑 ---
+        const mdOutput = document.getElementById('mdOutput');
+        const previewOutput = document.getElementById('previewOutput');
+        const syncScrollCheckbox = document.getElementById('syncScroll');
+        let activeScrollElement = null;
+
+        mdOutput.addEventListener('mouseenter', () => { activeScrollElement = mdOutput; });
+        previewOutput.addEventListener('mouseenter', () => { activeScrollElement = previewOutput; });
+        
+        mdOutput.addEventListener('scroll', () => {
+            if (!syncScrollCheckbox.checked) return;
+            if (activeScrollElement === mdOutput) {
+                const percentage = mdOutput.scrollTop / (mdOutput.scrollHeight - mdOutput.clientHeight);
+                if (isFinite(percentage)) {
+                    previewOutput.scrollTop = percentage * (previewOutput.scrollHeight - previewOutput.clientHeight);
+                }
+            }
+        });
+
+        previewOutput.addEventListener('scroll', () => {
+            if (!syncScrollCheckbox.checked) return;
+            if (activeScrollElement === previewOutput) {
+                const percentage = previewOutput.scrollTop / (previewOutput.scrollHeight - previewOutput.clientHeight);
+                if (isFinite(percentage)) {
+                    mdOutput.scrollTop = percentage * (mdOutput.scrollHeight - mdOutput.clientHeight);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
